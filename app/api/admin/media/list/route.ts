@@ -1,13 +1,11 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { r2List, r2PublicUrl } from '@/lib/r2'
+import { r2ListFolder, r2PublicUrl } from '@/lib/r2'
 
-// Subfolders to scan in addition to root
-const SUBFOLDERS = ['products', 'uploads']
-
-// ─── GET /api/admin/media/list ────────────────────────────────────────────────
-// Returns all files from bucket root + known subfolders, merged and sorted newest first.
-// Shape: { files: MediaFile[] }
+// ─── GET /api/admin/media/list?prefix=folder/ ────────────────────────────────
+// Lists one folder level: files directly inside `prefix`, plus the names of
+// its immediate subfolders. Omit `prefix` (or pass '') for the bucket root.
+// Shape: { files: MediaFile[], folders: string[], prefix: string }
 // MediaFile: { name, url, size, created_at, fullPath, folder? }
 
 export async function GET(request: NextRequest) {
@@ -15,33 +13,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const { searchParams } = new URL(request.url)
+  const rawPrefix = searchParams.get('prefix') ?? ''
+  // Normalize: no leading slash, exactly one trailing slash if non-empty
+  const prefix = rawPrefix ? rawPrefix.replace(/^\/+/, '').replace(/\/*$/, '/') : ''
+
   try {
-    async function listFolder(folder: string) {
-      const prefix = folder ? `${folder}/` : ''
-      const objects = await r2List(prefix)
-      return objects.map((obj) => {
-        const key = obj.Key!
-        return {
-          name:       key.split('/').pop()!,
-          url:        r2PublicUrl(key),
-          size:       obj.Size ?? 0,
-          created_at: obj.LastModified?.toISOString() ?? new Date().toISOString(),
-          fullPath:   key,
-          folder:     folder || undefined,
-        }
-      })
-    }
+    const { files, folders } = await r2ListFolder(prefix)
 
-    // List root + all subfolders in parallel
-    const [rootFiles, ...subFiles] = await Promise.all([
-      listFolder(''),
-      ...SUBFOLDERS.map((f) => listFolder(f)),
-    ])
+    const mediaFiles = files.map((obj) => {
+      const key = obj.Key!
+      return {
+        name:       key.split('/').pop()!,
+        url:        r2PublicUrl(key),
+        size:       obj.Size ?? 0,
+        created_at: obj.LastModified?.toISOString() ?? new Date().toISOString(),
+        fullPath:   key,
+        folder:     prefix ? prefix.replace(/\/$/, '') : undefined,
+      }
+    })
+    mediaFiles.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-    const allFiles = [...rootFiles, ...subFiles.flat()]
-    allFiles.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-
-    return NextResponse.json({ files: allFiles })
+    return NextResponse.json({ files: mediaFiles, folders, prefix })
   } catch (err) {
     console.error('[media/list] unexpected:', err)
     return NextResponse.json({ error: 'Failed to list media' }, { status: 500 })

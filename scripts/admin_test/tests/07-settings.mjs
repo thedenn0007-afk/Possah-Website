@@ -2,7 +2,7 @@ import { api } from '../lib/http.mjs'
 import { makeAssertCollection, printHeader } from '../lib/assert.mjs'
 
 export async function run(_ctx) {
-  printHeader('7 / 8  SETTINGS (singleton)')
+  printHeader('7 / 9  SETTINGS (singleton)')
   const A = makeAssertCollection('Settings')
 
   // ── GET (fetch original so we can restore) ────────────────────────────────────

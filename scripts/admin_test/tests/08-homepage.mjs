@@ -8,7 +8,7 @@ const OCCASION_TILES_8 = Array.from({ length: 8 }, (_, i) => ({
 }))
 
 export async function run(ctx) {
-  printHeader('8 / 8  HOMEPAGE CONFIG (singleton)')
+  printHeader('8 / 9  HOMEPAGE CONFIG (singleton)')
   const A = makeAssertCollection('Homepage')
 
   // ── GET (fetch original so we can restore) ────────────────────────────────────

@@ -9,12 +9,12 @@ interface BucketFile {
   url:       string
   size:      number
   fullPath:  string
-  folder?:   string
 }
 
 interface BucketPickerProps {
-  onSelect:  (url: string) => void
-  onClose:   () => void
+  onSelect:      (url: string) => void
+  onClose:       () => void
+  defaultFolder?: string
 }
 
 function formatSize(bytes: number) {
@@ -22,26 +22,32 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
+export function BucketPicker({ onSelect, onClose, defaultFolder = 'products' }: BucketPickerProps) {
+  const initialPath = defaultFolder ? `${defaultFolder.replace(/^\/+|\/+$/g, '')}/` : ''
+  const [currentPath, setCurrentPath] = useState(initialPath)
   const [files, setFiles]           = useState<BucketFile[]>([])
+  const [folders, setFolders]       = useState<string[]>([])
   const [loading, setLoading]       = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch]         = useState('')
   const [uploading, setUploading]   = useState(false)
   const [uploadErr, setUploadErr]   = useState<string | null>(null)
   const [selected, setSelected]     = useState<string | null>(null)
+  const [newFolderOpen, setNewFolderOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
   const fileInputRef                = useRef<HTMLInputElement>(null)
   const overlayRef                  = useRef<HTMLDivElement>(null)
 
-  // ── Fetch existing bucket files ─────────────────────────────────────────────
-  const fetchFiles = useCallback(async () => {
+  // ── Fetch current folder's files + subfolders ───────────────────────────────
+  const fetchFiles = useCallback(async (prefix: string) => {
     setLoading(true)
     setFetchError(null)
     try {
-      const res = await fetch('/api/admin/media/list')
+      const res = await fetch(`/api/admin/media/list?prefix=${encodeURIComponent(prefix)}`)
       if (!res.ok) throw new Error(`Failed to load media (${res.status})`)
-      const { files: data } = await res.json()
-      setFiles(data ?? [])
+      const data = await res.json()
+      setFiles(data.files ?? [])
+      setFolders(data.folders ?? [])
     } catch (err) {
       setFetchError(err instanceof Error ? err.message : 'Failed to load media')
     } finally {
@@ -49,7 +55,7 @@ export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
     }
   }, [])
 
-  useEffect(() => { fetchFiles() }, [fetchFiles])
+  useEffect(() => { fetchFiles(currentPath) }, [currentPath, fetchFiles])
 
   // Close on Escape
   useEffect(() => {
@@ -57,6 +63,40 @@ export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  function enterFolder(name: string) {
+    setSearch('')
+    setSelected(null)
+    setCurrentPath((prev) => `${prev}${name}/`)
+  }
+
+  const crumbs = currentPath.split('/').filter(Boolean)
+
+  function goToBreadcrumb(idx: number) {
+    const next = idx < 0 ? '' : `${crumbs.slice(0, idx + 1).join('/')}/`
+    setSearch('')
+    setSelected(null)
+    setCurrentPath(next)
+  }
+
+  async function createFolder() {
+    const name = newFolderName.trim()
+    if (!name) return
+    try {
+      const res = await fetch('/api/admin/media/folder', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ prefix: currentPath, name }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error ?? `Failed (${res.status})`)
+      setNewFolderName('')
+      setNewFolderOpen(false)
+      await fetchFiles(currentPath)
+    } catch (err) {
+      setUploadErr(err instanceof Error ? err.message : 'Failed to create folder')
+    }
+  }
 
   // ── Upload new file from picker ─────────────────────────────────────────────
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -69,14 +109,14 @@ export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
     try {
       const webpFile    = await convertToWebp(file)
       // Sanitize filename: lowercase, replace spaces/parens/special chars
-      // with hyphens. Prevents Supabase %20 URLs being double-encoded to
+      // with hyphens. Prevents storage %20 URLs being double-encoded to
       // %2520 by next/image (causes 400 Bad Request).
       const safeName    = webpFile.name
         .toLowerCase()
         .replace(/[^a-z0-9._-]/g, '-')
         .replace(/-{2,}/g, '-')
         .replace(/^-|-$/g, '')
-      const storagePath = `products/${Date.now()}-${safeName}`
+      const storagePath = `${currentPath}${Date.now()}-${safeName}`
       const fd          = new FormData()
       fd.append('file', webpFile)
       fd.append('path', storagePath)
@@ -91,7 +131,6 @@ export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
         url:      publicUrl,
         size:     webpFile.size,
         fullPath: storagePath,
-        folder:   'products',
       }
       setFiles(prev => [newFile, ...prev])
       setSelected(publicUrl)
@@ -105,6 +144,9 @@ export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
   const visibleFiles = search.trim()
     ? files.filter(f => f.name.toLowerCase().includes(search.toLowerCase()))
     : files
+  const visibleFolders = search.trim()
+    ? folders.filter(f => f.toLowerCase().includes(search.toLowerCase()))
+    : folders
 
   const isImage = (url: string) => /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?|$)/i.test(url)
 
@@ -144,7 +186,19 @@ export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
           <div>
             <p style={{ fontFamily: 'var(--font-body)', fontSize: '15px', fontWeight: '600', color: 'var(--color-text)', margin: 0 }}>Select from Media Library</p>
-            <p style={{ fontFamily: 'var(--font-body)', fontSize: '12px', color: 'var(--color-text-muted)', margin: '2px 0 0' }}>Pick an existing image or upload a new one</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontFamily: 'var(--font-body)', fontSize: '11px' }}>
+              <button type="button" onClick={() => goToBreadcrumb(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '1px 3px', color: currentPath ? 'var(--color-green)' : 'var(--color-text-muted)', fontWeight: currentPath ? 400 : 600 }}>
+                Root
+              </button>
+              {crumbs.map((seg, i) => (
+                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: 'var(--color-text-muted)' }}>/</span>
+                  <button type="button" onClick={() => goToBreadcrumb(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '1px 3px', color: i === crumbs.length - 1 ? 'var(--color-text-muted)' : 'var(--color-green)', fontWeight: i === crumbs.length - 1 ? 600 : 400 }}>
+                    {seg}
+                  </button>
+                </span>
+              ))}
+            </div>
           </div>
           <button
             type="button"
@@ -169,6 +223,15 @@ export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
             placeholder="Filter by filename…"
             style={{ flex: 1, minWidth: 160, height: 34, padding: '0 10px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-input)', fontFamily: 'var(--font-body)', fontSize: '12px', backgroundColor: 'var(--color-white)' }}
           />
+
+          {/* New folder */}
+          <button
+            type="button"
+            onClick={() => setNewFolderOpen(v => !v)}
+            style={{ height: 34, padding: '0 12px', borderRadius: 'var(--radius-btn)', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-white)', color: 'var(--color-text)', fontFamily: 'var(--font-body)', fontSize: '12px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}
+          >
+            + Folder
+          </button>
 
           {/* Upload new */}
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleUpload} style={{ display: 'none' }} />
@@ -210,6 +273,23 @@ export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
           </span>
         </div>
 
+        {newFolderOpen && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px 0' }}>
+            <input
+              type="text"
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') createFolder() }}
+              placeholder="Folder name…"
+              autoFocus
+              style={{ flex: 1, maxWidth: 220, height: 30, padding: '0 10px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-input)', fontFamily: 'var(--font-body)', fontSize: '12px' }}
+            />
+            <button type="button" onClick={createFolder} style={{ padding: '5px 12px', borderRadius: 'var(--radius-btn)', border: 'none', backgroundColor: 'var(--color-green)', color: '#fff', fontFamily: 'var(--font-body)', fontSize: '12px', cursor: 'pointer' }}>
+              Create
+            </button>
+          </div>
+        )}
+
         {uploadErr && (
           <div style={{ margin: '8px 20px 0', padding: '8px 12px', backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '6px', fontFamily: 'var(--font-body)', fontSize: '12px', color: '#DC2626', flexShrink: 0 }}>
             {uploadErr}
@@ -226,15 +306,32 @@ export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
           {fetchError && !loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '200px', gap: '12px' }}>
               <p style={{ fontFamily: 'var(--font-body)', fontSize: '14px', color: 'var(--color-error)' }}>{fetchError}</p>
-              <button type="button" onClick={fetchFiles} style={{ padding: '6px 14px', borderRadius: 'var(--radius-btn)', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg)', fontFamily: 'var(--font-body)', fontSize: '12px', cursor: 'pointer' }}>
+              <button type="button" onClick={() => fetchFiles(currentPath)} style={{ padding: '6px 14px', borderRadius: 'var(--radius-btn)', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg)', fontFamily: 'var(--font-body)', fontSize: '12px', cursor: 'pointer' }}>
                 Retry
               </button>
             </div>
           )}
-          {!loading && !fetchError && visibleFiles.length === 0 && (
+          {!loading && !fetchError && visibleFolders.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+              {visibleFolders.map(folder => (
+                <button
+                  key={folder}
+                  type="button"
+                  onClick={() => enterFolder(folder)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--color-gold)" aria-hidden="true">
+                    <path d="M2 5a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z" />
+                  </svg>
+                  <span style={{ fontFamily: 'var(--font-body)', fontSize: '11px', color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {!loading && !fetchError && visibleFiles.length === 0 && visibleFolders.length === 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '200px', gap: '8px' }}>
               <p style={{ fontFamily: 'var(--font-body)', fontSize: '14px', color: 'var(--color-text-muted)' }}>
-                {search ? `No files matching "${search}"` : 'No files in bucket yet. Upload one above.'}
+                {search ? `No files matching "${search}"` : 'No files in this folder yet. Upload one above.'}
               </p>
             </div>
           )}
@@ -285,7 +382,7 @@ export function BucketPicker({ onSelect, onClose }: BucketPickerProps) {
                         {file.name}
                       </p>
                       <p style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--color-text-muted)', margin: '1px 0 0' }}>
-                        {formatSize(file.size)}{file.folder ? ` · ${file.folder}` : ''}
+                        {formatSize(file.size)}
                       </p>
                     </div>
                   </button>

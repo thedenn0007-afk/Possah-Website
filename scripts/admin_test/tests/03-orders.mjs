@@ -5,7 +5,7 @@ import { env } from '../lib/env.mjs'
 import { SEEDS } from '../seed.mjs'
 
 export async function run(ctx) {
-  printHeader('3 / 8  ORDERS')
+  printHeader('3 / 9  ORDERS')
   const A = makeAssertCollection('Orders')
 
   // ── LIST (basic) ─────────────────────────────────────────────────────────────

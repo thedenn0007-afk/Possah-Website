@@ -3,7 +3,7 @@ import { makeAssertCollection, printHeader } from '../lib/assert.mjs'
 import { SEEDS } from '../seed.mjs'
 
 export async function run(ctx) {
-  printHeader('1 / 8  CATEGORIES')
+  printHeader('1 / 9  CATEGORIES')
   const A = makeAssertCollection('Categories')
   let createdId = null
 

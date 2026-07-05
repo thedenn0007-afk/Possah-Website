@@ -123,6 +123,7 @@ export function ImageUploadField({ label, value, onChange, pathPrefix = 'uploads
         <BucketPicker
           onSelect={(url) => { onChange(url); setPickerOpen(false) }}
           onClose={() => setPickerOpen(false)}
+          defaultFolder={pathPrefix}
         />
       )}
     </div>

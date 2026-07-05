@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, type FormEvent } from 'react'
+import { useState, useCallback, useRef, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { slugify } from '@/lib/utils'
@@ -183,6 +183,38 @@ export function ProductForm({ initialData, categories, mode }: ProductFormProps)
       ...prev,
       images: prev.images.map((img, i) => i === idx ? { ...img, [field]: value } : img),
     }))
+  }
+
+  // ── Image drag-and-drop reorder ─────────────────────────────────────────────
+  const dragImgIdx = useRef<number | null>(null)
+  const overImgIdx = useRef<number | null>(null)
+
+  function handleImageDragStart(idx: number) {
+    dragImgIdx.current = idx
+  }
+
+  function handleImageDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault()
+    overImgIdx.current = idx
+  }
+
+  function handleImageDrop() {
+    if (dragImgIdx.current === null || overImgIdx.current === null) return
+    if (dragImgIdx.current === overImgIdx.current) return
+
+    setForm((prev) => {
+      const reordered = [...prev.images]
+      const [moved] = reordered.splice(dragImgIdx.current!, 1)
+      reordered.splice(overImgIdx.current!, 0, moved)
+      return { ...prev, images: reordered.map((img, i) => ({ ...img, position: i })) }
+    })
+    dragImgIdx.current = null
+    overImgIdx.current = null
+  }
+
+  function handleImageDragEnd() {
+    dragImgIdx.current = null
+    overImgIdx.current = null
   }
 
   // ── Tag toggle ──────────────────────────────────────────────────────────────
@@ -613,7 +645,7 @@ export function ProductForm({ initialData, categories, mode }: ProductFormProps)
         </FormSection>
 
         {/* ── IMAGES ── */}
-        <FormSection title="Product Images" hint="Add image URLs. First image is the primary." error={errors.images}>
+        <FormSection title="Product Images" hint="Drag the handle to reorder. First image is the primary." error={errors.images}>
           <div className="flex flex-col gap-3">
             {form.images.map((img, idx) => (
               <ImageRow
@@ -622,6 +654,10 @@ export function ProductForm({ initialData, categories, mode }: ProductFormProps)
                 index={idx}
                 onChange={updateImage}
                 onRemove={() => removeImage(idx)}
+                onDragStart={() => handleImageDragStart(idx)}
+                onDragOver={(e) => handleImageDragOver(e, idx)}
+                onDrop={handleImageDrop}
+                onDragEnd={handleImageDragEnd}
               />
             ))}
             {form.images.length === 0 && (
@@ -1122,12 +1158,17 @@ interface ImageRowProps {
   index: number
   onChange: (idx: number, field: keyof ProductImage, value: string | number) => void
   onRemove: () => void
+  onDragStart: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDrop: () => void
+  onDragEnd: () => void
 }
 
-function ImageRow({ image, index, onChange, onRemove }: ImageRowProps) {
+function ImageRow({ image, index, onChange, onRemove, onDragStart, onDragOver, onDrop, onDragEnd }: ImageRowProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [uploading, setUploading]   = useState(false)
   const [uploadErr, setUploadErr]   = useState<string | null>(null)
+  const [dragging, setDragging]     = useState(false)
 
   // Called when BucketPicker confirms a selection
   function handlePickerSelect(url: string) {
@@ -1145,13 +1186,36 @@ function ImageRow({ image, index, onChange, onRemove }: ImageRowProps) {
         <BucketPicker
           onSelect={handlePickerSelect}
           onClose={() => setPickerOpen(false)}
+          defaultFolder="products"
         />
       )}
       <div
         className="flex flex-col gap-2 p-3 rounded"
-        style={{ backgroundColor: 'rgba(244,236,223,0.5)', border: '1px solid var(--color-border)' }}
+        style={{
+          backgroundColor: 'rgba(244,236,223,0.5)',
+          border: '1px solid var(--color-border)',
+          opacity: dragging ? 0.4 : 1,
+          transition: 'opacity 0.1s',
+        }}
+        onDragOver={onDragOver}
+        onDrop={() => { setDragging(false); onDrop() }}
       >
         <div className="flex items-center gap-3">
+          {/* Drag handle */}
+          <span
+            draggable
+            onDragStart={() => { setDragging(true); onDragStart() }}
+            onDragEnd={() => { setDragging(false); onDragEnd() }}
+            title="Drag to reorder"
+            style={{ flexShrink: 0, cursor: 'grab', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center' }}
+          >
+            <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">
+              <circle cx="2.5" cy="2.5" r="1.4" /><circle cx="7.5" cy="2.5" r="1.4" />
+              <circle cx="2.5" cy="8" r="1.4" /><circle cx="7.5" cy="8" r="1.4" />
+              <circle cx="2.5" cy="13.5" r="1.4" /><circle cx="7.5" cy="13.5" r="1.4" />
+            </svg>
+          </span>
+
           {/* Position number */}
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-text-muted)', flexShrink: 0, width: 20, textAlign: 'center' }}>
             {index + 1}

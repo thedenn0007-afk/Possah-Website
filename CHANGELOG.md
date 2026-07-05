@@ -4,6 +4,45 @@ All notable changes to this project, newest first.
 
 ---
 
+## [Unreleased] — 2026-07-05 — Product Image Drag-and-Drop Reorder, Media Bucket Folders, Page Heroes AVIF Fix
+
+### Summary
+Three related admin image-upload improvements: product images in the product form can now be reordered by dragging (no more delete-and-re-add to change the primary image), the media bucket gained folder creation and navigation (both in the standalone Media Library and the `BucketPicker` modal used everywhere images are picked), and the intermittent "Page Heroes — Collection & Editorial" upload error was root-caused and fixed. A new automated test module was added to `scripts/admin_test` so these stay covered going forward.
+
+### New Features
+
+#### Admin: Product Images — Drag-and-Drop Reorder
+Product image rows in the admin product form can now be reordered by dragging a grip handle, mirroring the native-HTML5-drag pattern already used in `CategoryManager.tsx` (no new dependency). Position renumbers live as rows are dragged; the first image after reorder becomes the primary/thumbnail image shown on PDP, product cards, and OG tags, exactly as before — only the mechanism for getting there changed. No schema/API changes were needed since `product_images.position` was already re-derived from array order on save.
+
+- `app/admin/products/ProductForm.tsx` — `moveImage`/drag-state handlers, grip handle + drag/drop wiring on `ImageRow`
+
+#### Admin: Media Bucket — Folder Creation & Navigation
+The media bucket (Cloudflare R2) was a flat, un-navigable list. Added real folder support: creating folders and browsing into them, both from the standalone Media Library page and from the `BucketPicker` modal used at upload time across the admin (product images, homepage/editorial hero images, etc).
+
+- `lib/r2.ts` — `r2ListFolder` (S3 `Delimiter`-based folder discovery via `CommonPrefixes`), `r2CreateFolder` (`.keep` placeholder convention)
+- `app/api/admin/media/list/route.ts` — rewritten to accept `?prefix=`, returns `{ files, folders, prefix }` instead of a flat hardcoded-subfolder scan
+- `app/api/admin/media/folder/route.ts` — new route, creates a folder (sanitized name, no path traversal)
+- `app/admin/media/MediaLibrary.tsx`, `app/admin/media/page.tsx` — breadcrumb nav, folder tiles, "New Folder", uploads now target the folder being viewed
+- `app/admin/products/BucketPicker.tsx` — same folder nav/creation inside the modal, plus a `defaultFolder` prop so uploads land in the folder relevant to where the picker was opened from (fixes a bug where every "Upload New" inside the picker always hardcoded `products/`, regardless of context)
+- `components/admin/ImageUploadField.tsx` — threads its existing `pathPrefix` prop into `BucketPicker` as `defaultFolder`
+
+### Bug Fixes
+
+#### Admin: Page Heroes — Intermittent AVIF Upload Error
+`components/admin/ImageUploadField.tsx` allowed AVIF files client-side (and advertised it in the file picker's `accept` attribute), but `app/api/admin/upload/route.ts`'s server-side `allowedTypes` allow-list was missing `image/avif`. Any admin uploading an AVIF file directly via "↑ Upload new" in the Page Heroes section (or anywhere else `ImageUploadField` is used) passed client validation, uploaded, then got a 415 from the server — the intermittent error reported in the Page Heroes — Collection & Editorial section. The "Select from Media" path never hit this because `BucketPicker` always converts to WebP first.
+
+**Fix:** Added `image/avif` to the server's `allowedTypes` array. The `BucketPicker` `defaultFolder` fix above additionally corrects a secondary issue where Page Hero images uploaded via "Select from Media → Upload New" landed in `products/` instead of `uploads/editorial`.
+
+- `app/api/admin/upload/route.ts` — `allowedTypes` now includes `'image/avif'`
+
+### Testing
+
+- `scripts/admin_test/tests/02-products.mjs` — new "IMAGE REORDER" case: PATCHes a shuffled `images` array and verifies `product_images.position` persists in the new order
+- `scripts/admin_test/tests/09-media.mjs` — new module: folder creation, folder discovery in listings, upload-into-folder scoping, and an AVIF-upload regression check; registered in `scripts/admin_test/run.mjs`
+- Full suite (`node scripts/admin_test/run.mjs`) passes 199/199 assertions; `npm run build` clean
+
+---
+
 ## [Unreleased] — 2026-06-25 — Lookbook Detail Page, DB Seeding, Branch Consolidation
 
 ### Summary

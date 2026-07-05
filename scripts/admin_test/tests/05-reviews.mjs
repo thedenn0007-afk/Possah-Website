@@ -2,7 +2,7 @@ import { api } from '../lib/http.mjs'
 import { makeAssertCollection, printHeader } from '../lib/assert.mjs'
 
 export async function run(ctx) {
-  printHeader('5 / 8  REVIEWS')
+  printHeader('5 / 9  REVIEWS')
   const A = makeAssertCollection('Reviews')
 
   if (!ctx.review_ids?.length) {

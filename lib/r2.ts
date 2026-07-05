@@ -67,3 +67,39 @@ export async function r2List(prefix = '', maxKeys = 500): Promise<_Object[]> {
   )
   return res.Contents ?? []
 }
+
+// Lists the immediate contents of one "folder" level: files directly under
+// `prefix`, plus the names of subfolders (S3 CommonPrefixes via Delimiter).
+// Placeholder `.keep` objects used to mark empty folders are filtered out of `files`.
+export async function r2ListFolder(
+  prefix = '',
+  maxKeys = 500,
+): Promise<{ files: _Object[]; folders: string[] }> {
+  const client = getR2Client()
+  const res = await client.send(
+    new ListObjectsV2Command({
+      Bucket: R2_BUCKET,
+      Prefix: prefix || undefined,
+      Delimiter: '/',
+      MaxKeys: maxKeys,
+    }),
+  )
+  const files = (res.Contents ?? []).filter((obj) => !obj.Key?.endsWith('/.keep'))
+  const folders = (res.CommonPrefixes ?? [])
+    .map((cp) => cp.Prefix ?? '')
+    .filter(Boolean)
+    .map((full) => full.slice(prefix.length, -1)) // strip parent prefix + trailing '/'
+  return { files, folders }
+}
+
+export async function r2CreateFolder(prefix: string): Promise<void> {
+  const client = getR2Client()
+  await client.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: `${prefix}/.keep`,
+      Body: Buffer.alloc(0),
+      ContentType: 'application/octet-stream',
+    }),
+  )
+}

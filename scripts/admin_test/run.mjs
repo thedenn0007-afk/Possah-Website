@@ -31,6 +31,7 @@ import { run as runReviews }    from './tests/05-reviews.mjs'
 import { run as runJournal }    from './tests/06-journal.mjs'
 import { run as runSettings }   from './tests/07-settings.mjs'
 import { run as runHomepage }   from './tests/08-homepage.mjs'
+import { run as runMedia }      from './tests/09-media.mjs'
 
 const BOLD  = '\x1b[1m'
 const RESET = '\x1b[0m'
@@ -97,6 +98,7 @@ async function main() {
     ['Journal',    runJournal],
     ['Settings',   runSettings],
     ['Homepage',   runHomepage],
+    ['Media',      runMedia],
   ]
 
   for (const [name, runFn] of modules) {

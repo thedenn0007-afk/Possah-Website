@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import Image from 'next/image'
 import { convertToWebp } from '@/lib/utils'
 
@@ -10,11 +10,11 @@ interface MediaFile {
   size:       number
   created_at: string
   fullPath:   string
-  folder?:    string
 }
 
 interface MediaLibraryProps {
   initialFiles: MediaFile[]
+  initialFolders: string[]
 }
 
 function formatSize(bytes: number) {
@@ -27,16 +27,77 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-export function MediaLibrary({ initialFiles }: MediaLibraryProps) {
-  const [files, setFiles]             = useState<MediaFile[]>(initialFiles)
-  const [uploading, setUploading]     = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const [copiedUrl, setCopiedUrl]     = useState<string | null>(null)
-  const [deleting, setDeleting]       = useState<string | null>(null)
-  const [dragOver, setDragOver]       = useState(false)
-  const [viewMode, setViewMode]       = useState<'grid' | 'list'>('grid')
-  const [search, setSearch]           = useState('')
+export function MediaLibrary({ initialFiles, initialFolders }: MediaLibraryProps) {
+  const [currentPath, setCurrentPath]   = useState('') // '' = root, otherwise 'folder/sub/'
+  const [files, setFiles]               = useState<MediaFile[]>(initialFiles)
+  const [folders, setFolders]           = useState<string[]>(initialFolders)
+  const [loading, setLoading]           = useState(false)
+  const [uploading, setUploading]       = useState(false)
+  const [uploadError, setUploadError]   = useState<string | null>(null)
+  const [copiedUrl, setCopiedUrl]       = useState<string | null>(null)
+  const [deleting, setDeleting]         = useState<string | null>(null)
+  const [dragOver, setDragOver]         = useState(false)
+  const [viewMode, setViewMode]         = useState<'grid' | 'list'>('grid')
+  const [search, setSearch]             = useState('')
+  const [newFolderOpen, setNewFolderOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [folderError, setFolderError]   = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const fetchFolder = useCallback(async (prefix: string) => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/media/list?prefix=${encodeURIComponent(prefix)}`)
+      if (!res.ok) throw new Error(`Failed to load media (${res.status})`)
+      const data = await res.json()
+      setFiles(data.files ?? [])
+      setFolders(data.folders ?? [])
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Failed to load media')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Skip refetch on first render — we already have server-fetched root data
+  const didMount = useRef(false)
+  useEffect(() => {
+    if (!didMount.current) { didMount.current = true; return }
+    fetchFolder(currentPath)
+  }, [currentPath, fetchFolder])
+
+  function enterFolder(name: string) {
+    setSearch('')
+    setCurrentPath((prev) => `${prev}${name}/`)
+  }
+
+  function goToBreadcrumb(idx: number) {
+    // idx -1 = root; otherwise the crumb ends after segment idx
+    const segments = currentPath.split('/').filter(Boolean)
+    const next = idx < 0 ? '' : `${segments.slice(0, idx + 1).join('/')}/`
+    setSearch('')
+    setCurrentPath(next)
+  }
+
+  async function createFolder() {
+    setFolderError(null)
+    const name = newFolderName.trim()
+    if (!name) { setFolderError('Folder name required'); return }
+    try {
+      const res = await fetch('/api/admin/media/folder', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ prefix: currentPath, name }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error ?? `Failed (${res.status})`)
+      setNewFolderName('')
+      setNewFolderOpen(false)
+      await fetchFolder(currentPath)
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : 'Failed to create folder')
+    }
+  }
 
   // Upload via service-role API route (not anon client)
   async function uploadFiles(fileList: FileList) {
@@ -62,7 +123,7 @@ export function MediaLibrary({ initialFiles }: MediaLibraryProps) {
 
       // Sanitize: lowercase, replace ALL non-alphanumeric chars
       // (spaces, parens, percent signs, etc.) with hyphens, collapse runs,
-      // strip leading/trailing hyphens. Prevents %20 in Supabase storage
+      // strip leading/trailing hyphens. Prevents %20 in storage
       // URLs which next/image double-encodes to %2520 (400 Bad Request).
       const timestamp   = Date.now()
       const safeName    = uploadFile.name
@@ -70,7 +131,7 @@ export function MediaLibrary({ initialFiles }: MediaLibraryProps) {
         .replace(/[^a-z0-9._-]/g, '-')
         .replace(/-{2,}/g, '-')
         .replace(/^-|-$/g, '')
-      const storagePath = `${timestamp}-${safeName}`
+      const storagePath = `${currentPath}${timestamp}-${safeName}`
 
       const fd = new FormData()
       fd.append('file', uploadFile)
@@ -156,9 +217,32 @@ export function MediaLibrary({ initialFiles }: MediaLibraryProps) {
   const visibleFiles = search.trim()
     ? files.filter(f => f.name.toLowerCase().includes(search.toLowerCase()))
     : files
+  const visibleFolders = search.trim()
+    ? folders.filter(f => f.toLowerCase().includes(search.toLowerCase()))
+    : folders
+
+  const crumbs = currentPath.split('/').filter(Boolean)
 
   return (
     <div>
+      {/* Breadcrumb */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '14px', flexWrap: 'wrap', fontFamily: 'var(--font-body)', fontSize: '12px' }}>
+        <button onClick={() => goToBreadcrumb(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: currentPath ? 'var(--color-green)' : 'var(--color-text)', fontWeight: currentPath ? 400 : 600 }}>
+          Root
+        </button>
+        {crumbs.map((seg, i) => (
+          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ color: 'var(--color-text-muted)' }}>/</span>
+            <button
+              onClick={() => goToBreadcrumb(i)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: i === crumbs.length - 1 ? 'var(--color-text)' : 'var(--color-green)', fontWeight: i === crumbs.length - 1 ? 600 : 400 }}
+            >
+              {seg}
+            </button>
+          </span>
+        ))}
+      </div>
+
       {/* Upload zone */}
       <div
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
@@ -185,7 +269,9 @@ export function MediaLibrary({ initialFiles }: MediaLibraryProps) {
               <polyline points="16 16 12 12 8 16" /><line x1="12" y1="12" x2="12" y2="21" />
               <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
             </svg>
-            <p style={{ fontFamily: 'var(--font-body)', fontSize: '14px', color: 'var(--color-text)', fontWeight: '500' }}>Drag & drop or click to upload</p>
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: '14px', color: 'var(--color-text)', fontWeight: '500' }}>
+              Drag &amp; drop or click to upload {currentPath ? `into "${crumbs[crumbs.length - 1]}"` : ''}
+            </p>
             <p style={{ fontFamily: 'var(--font-body)', fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '4px' }}>Images (JPG, PNG, WebP, SVG) · MP4 video · Max 10 MB each</p>
           </>
         )}
@@ -220,16 +306,64 @@ export function MediaLibrary({ initialFiles }: MediaLibraryProps) {
             </button>
           ))}
         </div>
+        <button
+          onClick={() => { setNewFolderOpen(v => !v); setFolderError(null) }}
+          style={{ padding: '5px 12px', borderRadius: '5px', border: '1px solid var(--color-green)', backgroundColor: 'transparent', color: 'var(--color-green)', fontFamily: 'var(--font-body)', fontSize: '11px', cursor: 'pointer', fontWeight: '500', flexShrink: 0 }}
+        >
+          + New Folder
+        </button>
       </div>
 
-      {visibleFiles.length === 0 && (
+      {newFolderOpen && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+          <input
+            type="text"
+            value={newFolderName}
+            onChange={e => setNewFolderName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') createFolder() }}
+            placeholder="Folder name…"
+            autoFocus
+            style={{ flex: 1, maxWidth: 240, height: 32, padding: '0 10px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-input)', fontFamily: 'var(--font-body)', fontSize: '12px', backgroundColor: 'var(--color-white)' }}
+          />
+          <button onClick={createFolder} style={{ padding: '6px 14px', borderRadius: '5px', border: 'none', backgroundColor: 'var(--color-green)', color: '#fff', fontFamily: 'var(--font-body)', fontSize: '12px', cursor: 'pointer' }}>
+            Create
+          </button>
+          {folderError && <span style={{ fontFamily: 'var(--font-body)', fontSize: '11px', color: '#DC2626' }}>{folderError}</span>}
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--color-text-muted)', fontFamily: 'var(--font-body)', fontSize: '13px' }}>
+          Loading…
+        </div>
+      )}
+
+      {/* Folder tiles */}
+      {!loading && visibleFolders.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+          {visibleFolders.map(folder => (
+            <button
+              key={folder}
+              onClick={() => enterFolder(folder)}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--color-gold)" aria-hidden="true">
+                <path d="M2 5a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z" />
+              </svg>
+              <span style={{ fontFamily: 'var(--font-body)', fontSize: '12px', color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!loading && visibleFiles.length === 0 && visibleFolders.length === 0 && (
         <div style={{ padding: '48px', textAlign: 'center', color: 'var(--color-text-muted)', fontFamily: 'var(--font-body)', fontSize: '14px' }}>
-          {search ? `No files matching "${search}"` : 'No files uploaded yet.'}
+          {search ? `No files matching "${search}"` : 'No files here yet.'}
         </div>
       )}
 
       {/* Grid view */}
-      {visibleFiles.length > 0 && viewMode === 'grid' && (
+      {!loading && visibleFiles.length > 0 && viewMode === 'grid' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px' }}>
           {visibleFiles.map((file) => (
             <div key={file.fullPath} style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '8px', overflow: 'hidden' }}>
@@ -245,9 +379,6 @@ export function MediaLibrary({ initialFiles }: MediaLibraryProps) {
                 )}
               </div>
               <div style={{ padding: '8px 10px' }}>
-                {file.folder && (
-                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--color-text-muted)', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{file.folder}</p>
-                )}
                 <p style={{ fontFamily: 'var(--font-body)', fontSize: '11px', color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '2px' }}>{file.name}</p>
                 <p style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-text-muted)', marginBottom: '8px' }}>{formatSize(file.size)}</p>
                 <div style={{ display: 'flex', gap: '6px' }}>
@@ -265,12 +396,12 @@ export function MediaLibrary({ initialFiles }: MediaLibraryProps) {
       )}
 
       {/* List view */}
-      {visibleFiles.length > 0 && viewMode === 'list' && (
+      {!loading && visibleFiles.length > 0 && viewMode === 'list' && (
         <div style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '10px', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                {['Preview', 'Name', 'Folder', 'Size', 'Uploaded', ''].map(h => (
+                {['Preview', 'Name', 'Size', 'Uploaded', ''].map(h => (
                   <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontFamily: 'var(--font-body)', fontSize: '11px', fontWeight: '600', color: 'var(--color-text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>{h}</th>
                 ))}
               </tr>
@@ -293,9 +424,6 @@ export function MediaLibrary({ initialFiles }: MediaLibraryProps) {
                   </td>
                   <td style={{ padding: '10px 14px' }}>
                     <p style={{ fontFamily: 'var(--font-body)', fontSize: '13px', color: 'var(--color-text)', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</p>
-                  </td>
-                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{file.folder ?? 'root'}</span>
                   </td>
                   <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--color-text-muted)' }}>{formatSize(file.size)}</span>

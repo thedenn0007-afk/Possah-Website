@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'File too large (max 10 MB)' }, { status: 413 })
   }
 
-  const allowedTypes = ['image/webp', 'image/jpeg', 'image/png', 'image/gif', 'image/svg+xml']
+  const allowedTypes = ['image/webp', 'image/jpeg', 'image/png', 'image/gif', 'image/svg+xml', 'image/avif']
   if (!allowedTypes.includes(file.type)) {
     return NextResponse.json({ error: 'Unsupported file type' }, { status: 415 })
   }

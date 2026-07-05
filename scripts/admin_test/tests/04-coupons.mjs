@@ -3,7 +3,7 @@ import { makeAssertCollection, printHeader } from '../lib/assert.mjs'
 import { SEEDS } from '../seed.mjs'
 
 export async function run(ctx) {
-  printHeader('4 / 8  COUPONS')
+  printHeader('4 / 9  COUPONS')
   const A = makeAssertCollection('Coupons')
   let createdId = null
   const uniqueCode = `TESTNEW${Date.now().toString().slice(-5)}`

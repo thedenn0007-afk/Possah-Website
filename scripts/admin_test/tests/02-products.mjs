@@ -3,7 +3,7 @@ import { makeAssertCollection, printHeader } from '../lib/assert.mjs'
 import { SEEDS } from '../seed.mjs'
 
 export async function run(ctx) {
-  printHeader('2 / 8  PRODUCTS')
+  printHeader('2 / 9  PRODUCTS')
   const A = makeAssertCollection('Products')
   let createdId = null
 
@@ -149,6 +149,36 @@ export async function run(ctx) {
       `Expected 1 variant after replace, got ${variants.length}. Check delete+reinsert logic.`)
     A.ok('UPDATE variants', 'new variant colour = Blue', variants[0]?.colour_name === 'Blue',
       'Variant replace did not persist. Check PATCH handler variant section.')
+  }
+
+  // ── IMAGE REORDER (drag-and-drop persistence contract) ────────────────────────
+  // The admin UI lets the user drag images into any order; on save, ProductForm
+  // re-derives `position` from array index and PATCHes the whole array. This
+  // verifies that backend contract end-to-end (not the drag UI itself).
+  if (ctx.product_a_id) {
+    const threeImages = [
+      { url: 'https://placehold.co/600x800?text=One',   alt: 'One',   position: 0 },
+      { url: 'https://placehold.co/600x800?text=Two',   alt: 'Two',   position: 1 },
+      { url: 'https://placehold.co/600x800?text=Three', alt: 'Three', position: 2 },
+    ]
+    const setupRes = await api('PATCH', `/api/admin/products/${ctx.product_a_id}`, { images: threeImages })
+    A.status('IMAGE REORDER setup', 'PATCH images (3, in order) → 200', setupRes, 200)
+
+    // Simulate a drag: move "Three" (was last) to first position.
+    const reordered = [threeImages[2], threeImages[0], threeImages[1]]
+      .map((img, i) => ({ url: img.url, alt: img.alt, position: i }))
+    const res = await api('PATCH', `/api/admin/products/${ctx.product_a_id}`, { images: reordered })
+    A.status('IMAGE REORDER', 'PATCH images (reordered) → 200', res, 200)
+
+    const verify = await api('GET', `/api/admin/products/${ctx.product_a_id}`)
+    const images = (verify.data?.product_images ?? []).slice().sort((a, b) => a.position - b.position)
+    A.ok('IMAGE REORDER verify', 'image count still 3', images.length === 3,
+      `Expected 3 images after reorder, got ${images.length}.`)
+    A.ok('IMAGE REORDER verify', 'dragged image ("Three") is now position 0 / primary', images[0]?.alt === 'Three',
+      'Reordered array was not persisted with position = array index. Check PATCH handler images replace logic.')
+    A.ok('IMAGE REORDER verify', 'order fully matches drag result (Three, One, Two)',
+      images.map(i => i.alt).join(',') === 'Three,One,Two',
+      `Got order: ${images.map(i => i.alt).join(',')}. Position column must be re-derived from array index on every save.`)
   }
 
   // ── SOFT DELETE ───────────────────────────────────────────────────────────────
