@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ProductCreateSchema, type ProductCreateInput } from '@/lib/validations/admin-products'
 
@@ -214,6 +215,54 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ id: productId, slug: data.slug }, { status: 201 })
   } catch (err) {
     console.error('[Admin Products POST] unexpected:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// ─── PATCH /api/admin/products ─ bulk activate/deactivate ────────────────────
+// Mirrors the bulk-approve pattern in /api/admin/reviews (PATCH): a flat
+// {ids, is_active} body applied to every matching row in one update. Reuses
+// the existing soft-delete semantics — never a hard delete, same as the
+// single-product DELETE handler below.
+
+const BulkUpdateSchema = z.object({
+  ids:       z.array(z.string().uuid()).min(1),
+  is_active: z.boolean(),
+})
+
+export async function PATCH(request: NextRequest) {
+  if (!await requireAdminAuth(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
+    const body   = await request.json()
+    const parsed = BulkUpdateSchema.safeParse(body)
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', issues: parsed.error.flatten().fieldErrors },
+        { status: 422 }
+      )
+    }
+
+    const supabase = createAdminClient()
+    const { error } = await supabase
+      .from('products')
+      .update({ is_active: parsed.data.is_active })
+      .in('id', parsed.data.ids)
+
+    if (error) {
+      console.error('[Admin Products PATCH bulk]', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // Bust ISR so activated/deactivated products reflect on the shop immediately
+    revalidatePath('/', 'layout')
+
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[Admin Products PATCH bulk] unexpected:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
