@@ -1,7 +1,7 @@
 # Admin API Reference — Possah 1.0
 
 All admin routes live under `/api/admin/*`.
-Auth guard runs on every route: in production, a valid `next-auth.session-token` cookie is required. In development, the guard is bypassed.
+Auth guard runs on every route in every environment (`requireAdminAuth`, `lib/admin-auth.ts`): a valid NextAuth session with `isAdmin: true` is required. The only bypass is a test-harness token (`X-Admin-Test-Token` matched against `ADMIN_TEST_SECRET`), which is hard-gated to non-production and used solely by `scripts/admin_test`.
 
 ---
 

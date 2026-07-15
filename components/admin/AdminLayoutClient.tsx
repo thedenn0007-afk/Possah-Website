@@ -49,7 +49,7 @@ export function AdminLayoutClient({ children, isDev }: AdminLayoutClientProps) {
                 fontWeight: '500',
               }}
             >
-              DEV MODE — Auth bypassed. This banner disappears in production.
+              DEV MODE — Google sign-in still required. This banner disappears in production.
             </span>
           </div>
         )}
