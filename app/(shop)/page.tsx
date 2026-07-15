@@ -88,11 +88,12 @@ export interface ProductCardData {
   is_top_selling: boolean
   images: { url: string; alt: string | null }[]
   tags: string[]
+  sub_line?: string | null
 }
 
 const PRODUCT_SELECT = `
   id, slug, name, fabric, price, compare_price,
-  is_new_arrival, is_top_selling,
+  is_new_arrival, is_top_selling, sub_line,
   categories (slug, gender),
   product_images (url, alt, position),
   product_tags (tag)
@@ -229,6 +230,7 @@ export default async function HomePage() {
       .sort((a, b) => a.position - b.position)
       .map((img) => ({ url: img.url, alt: img.alt })),
     tags: ((p.product_tags as { tag: string }[] | null) ?? []).map((t) => t.tag),
+    sub_line: p.sub_line ?? null,
   }))
 
   return (

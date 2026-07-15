@@ -42,7 +42,7 @@ async function getBestSellers(searchParams: Record<string, string | string[] | u
       .from('products')
       .select(`
         id, slug, name, fabric, price, compare_price,
-        is_new_arrival, is_top_selling,
+        is_new_arrival, is_top_selling, sub_line,
         categories (slug, gender),
         product_images (url, alt, position),
         product_tags (tag)
@@ -91,6 +91,7 @@ async function getBestSellers(searchParams: Record<string, string | string[] | u
           .sort((a, b) => a.position - b.position)
           .map((img) => ({ url: img.url, alt: img.alt })),
         tags: ((p.product_tags as { tag: string }[]) ?? []).map((t) => t.tag),
+        sub_line: p.sub_line ?? null,
       }))
 
     let mapped = mapProducts(products)
@@ -102,7 +103,7 @@ async function getBestSellers(searchParams: Record<string, string | string[] | u
       .from('products')
       .select(`
         id, slug, name, fabric, price, compare_price,
-        is_new_arrival, is_top_selling,
+        is_new_arrival, is_top_selling, sub_line,
         categories (slug, gender),
         product_images (url, alt, position),
         product_tags (tag)

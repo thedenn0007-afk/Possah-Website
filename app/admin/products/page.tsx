@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { SubLineEnum } from '@/lib/validations/admin-products'
 import { ProductsTable, type ProductRow } from './ProductsTable'
 
 export const metadata: Metadata = { title: 'Products' }
@@ -32,7 +33,7 @@ const SORT_OPTIONS = [
   { value: 'price_desc', label: 'Price high–low' },
 ]
 
-async function getProducts(search: string, page: number, category: string, sort: string): Promise<{
+async function getProducts(search: string, page: number, category: string, sort: string, subLine: string): Promise<{
   products: ProductRow[]
   total: number
 }> {
@@ -54,6 +55,7 @@ async function getProducts(search: string, page: number, category: string, sort:
 
     if (search)   query = query.ilike('name', `%${search}%`)
     if (category) query = query.eq('category_id', category)
+    if (subLine)  query = query.eq('sub_line', subLine)
 
     switch (sort) {
       case 'name_asc':   query = query.order('name', { ascending: true }); break
@@ -103,15 +105,16 @@ async function getProducts(search: string, page: number, category: string, sort:
 export default async function AdminProductsPage({
   searchParams,
 }: {
-  searchParams: { search?: string; page?: string; category?: string; sort?: string }
+  searchParams: { search?: string; page?: string; category?: string; sort?: string; sub_line?: string }
 }) {
   const search   = searchParams.search ?? ''
   const page     = Math.max(1, parseInt(searchParams.page ?? '1', 10))
   const category = searchParams.category ?? ''
   const sort     = searchParams.sort ?? 'newest'
+  const subLine  = searchParams.sub_line ?? ''
 
   const [{ products, total }, categories] = await Promise.all([
-    getProducts(search, page, category, sort),
+    getProducts(search, page, category, sort, subLine),
     getCategories(),
   ])
   const totalPages = Math.ceil(total / 20)
@@ -239,6 +242,27 @@ export default async function AdminProductsPage({
           ))}
         </select>
 
+        {/* Sub-line filter */}
+        <select
+          name="sub_line"
+          defaultValue={subLine}
+          className="h-10 px-3"
+          style={{
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-input)',
+            backgroundColor: 'var(--color-white)',
+            fontFamily: 'var(--font-body)',
+            fontSize: '13px',
+            color: 'var(--color-text)',
+            minWidth: 150,
+          }}
+        >
+          <option value="">All collections</option>
+          {SubLineEnum.options.map((sl) => (
+            <option key={sl} value={sl}>{sl}</option>
+          ))}
+        </select>
+
         <button
           type="submit"
           className="px-4 h-10 hover:opacity-90 transition-opacity"
@@ -255,7 +279,7 @@ export default async function AdminProductsPage({
         >
           Apply
         </button>
-        {(search || category || sort !== 'newest') && (
+        {(search || category || sort !== 'newest' || subLine) && (
           <Link
             href="/admin/products"
             style={{
@@ -280,7 +304,7 @@ export default async function AdminProductsPage({
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <Pagination current={page} total={totalPages} search={search} category={category} sort={sort} />
+            <Pagination current={page} total={totalPages} search={search} category={category} sort={sort} subLine={subLine} />
           )}
         </>
       )}
@@ -332,11 +356,12 @@ function EmptyState({ search, category }: { search: string; category: string }) 
   )
 }
 
-function Pagination({ current, total, search, category, sort }: { current: number; total: number; search: string; category: string; sort: string }) {
+function Pagination({ current, total, search, category, sort, subLine }: { current: number; total: number; search: string; category: string; sort: string; subLine: string }) {
   const qs = [
     search   ? `search=${encodeURIComponent(search)}`   : '',
     category ? `category=${encodeURIComponent(category)}` : '',
     sort && sort !== 'newest' ? `sort=${encodeURIComponent(sort)}` : '',
+    subLine  ? `sub_line=${encodeURIComponent(subLine)}` : '',
   ].filter(Boolean).join('&')
   const base = `/admin/products?${qs ? qs + '&' : ''}`
   return (

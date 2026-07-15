@@ -156,6 +156,21 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
           </div>
         )}
 
+        {/* Sub-line / collection label */}
+        {product.sub_line && (
+          <p
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '9px',
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--color-gold)',
+            }}
+          >
+            {product.sub_line}
+          </p>
+        )}
+
         {/* Name */}
         <Link href={productHref}>
           <h3
