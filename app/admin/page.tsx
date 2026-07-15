@@ -15,6 +15,7 @@ export const revalidate = 60
 interface DashboardStats {
   ordersToday: number          // PAID orders today only — excludes abandoned attempts
   revenueToday: number         // PAID revenue today only
+  revenueThisMonth: number     // PAID revenue since the 1st of the current calendar month
   pendingOrders: number        // Unfulfilled or processing orders (admin action queue)
   totalProducts: number
   lowStockItems: number
@@ -45,6 +46,7 @@ async function getDashboardData(): Promise<{
     stats: {
       ordersToday: 0,
       revenueToday: 0,
+      revenueThisMonth: 0,
       pendingOrders: 0,
       totalProducts: 0,
       lowStockItems: 0,
@@ -63,12 +65,21 @@ async function getDashboardData(): Promise<{
     todayStart.setHours(0, 0, 0, 0)
     const todayISO = todayStart.toISOString()
 
+    // Month-to-date range — same IST-via-UTC tolerance already accepted for
+    // "today" above (server runs in UTC; this can be off by a few hours right
+    // at the month boundary, same known imprecision, not worth solving twice).
+    const monthStart = new Date()
+    monthStart.setDate(1)
+    monthStart.setHours(0, 0, 0, 0)
+    const monthStartISO = monthStart.toISOString()
+
     // 7-day window for the abandoned-checkout metric
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
     // Parallel queries
     const [
       todayOrdersRes,
+      monthOrdersRes,
       pendingRes,
       productsRes,
       lowStockRes,
@@ -83,6 +94,13 @@ async function getDashboardData(): Promise<{
         .select('total')
         .eq('payment_status', 'paid')
         .gte('created_at', todayISO),
+
+      // Revenue since the 1st of this month — PAID only, same convention.
+      supabase
+        .from('orders')
+        .select('total')
+        .eq('payment_status', 'paid')
+        .gte('created_at', monthStartISO),
 
       // Unfulfilled + processing orders (pending admin action — paid only,
       // because pending-payment orders are abandoned checkouts, not admin work).
@@ -133,6 +151,8 @@ async function getDashboardData(): Promise<{
     const todayOrders = todayOrdersRes.data ?? []
     const ordersToday   = todayOrders.length
     const revenueToday  = todayOrders.reduce((sum, o) => sum + (o.total ?? 0), 0)
+    const monthOrders = monthOrdersRes.data ?? []
+    const revenueThisMonth = monthOrders.reduce((sum, o) => sum + (o.total ?? 0), 0)
     const pendingOrders = pendingRes.count ?? 0
     const totalProducts = productsRes.count ?? 0
     const lowStockItems = lowStockRes.count ?? 0
@@ -167,6 +187,7 @@ async function getDashboardData(): Promise<{
       stats: {
         ordersToday,
         revenueToday,
+        revenueThisMonth,
         pendingOrders,
         totalProducts,
         lowStockItems,
@@ -224,7 +245,7 @@ export default async function AdminDashboardPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-10">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
         <AdminStatCard
           label="Orders Today"
           value={stats.ordersToday}
@@ -236,6 +257,13 @@ export default async function AdminDashboardPage() {
           label="Revenue Today"
           value={formatPrice(stats.revenueToday)}
           subLabel="Paid only"
+          accent="success"
+          icon={<IconRupee />}
+        />
+        <AdminStatCard
+          label="Revenue This Month"
+          value={formatPrice(stats.revenueThisMonth)}
+          subLabel="Paid only, month to date"
           accent="success"
           icon={<IconRupee />}
         />
