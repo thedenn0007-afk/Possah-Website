@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { PaymentBadge, FulfillmentBadge } from '@/components/admin/FulfillmentBadge'
 import { formatPrice } from '@/lib/utils'
 import { OrderDetailClient, type HistoryRow } from './OrderDetailClient'
+import { PrintOrderButton } from './PrintOrderButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -171,6 +172,7 @@ export default async function AdminOrderDetailPage({ params }: PageProps) {
       <div className="mb-6">
         <Link
           href="/admin/orders"
+          className="print:hidden"
           style={{
             fontFamily:     'var(--font-body)',
             fontSize:       '12px',
@@ -199,6 +201,7 @@ export default async function AdminOrderDetailPage({ params }: PageProps) {
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
             <PaymentBadge status={order.payment_status} />
             <FulfillmentBadge status={order.fulfillment_status} />
+            <PrintOrderButton />
           </div>
         </div>
       </div>
@@ -261,16 +264,19 @@ export default async function AdminOrderDetailPage({ params }: PageProps) {
             )}
           </div>
 
-          {/* Mutable fields: fulfilment, tracking, notes, resend, history */}
-          <OrderDetailClient
-            orderId={order.id}
-            customerEmail={order.customer_email}
-            fulfillmentStatus={order.fulfillment_status}
-            trackingNumber={order.tracking_number}
-            courier={order.courier}
-            internalNotes={order.internal_notes}
-            history={history}
-          />
+          {/* Mutable fields: fulfilment, tracking, notes, resend, history —
+              operational controls, not part of a printed order record */}
+          <div className="print:hidden">
+            <OrderDetailClient
+              orderId={order.id}
+              customerEmail={order.customer_email}
+              fulfillmentStatus={order.fulfillment_status}
+              trackingNumber={order.tracking_number}
+              courier={order.courier}
+              internalNotes={order.internal_notes}
+              history={history}
+            />
+          </div>
 
         </div>
 

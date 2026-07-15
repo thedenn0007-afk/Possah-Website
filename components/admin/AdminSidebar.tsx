@@ -50,6 +50,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
           'w-60 flex-shrink-0',
           'transition-transform duration-250 ease-in-out md:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full',
+          'print:hidden',
         ].join(' ')}
         style={{
           backgroundColor: 'var(--color-green)',
