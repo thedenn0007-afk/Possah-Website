@@ -106,6 +106,7 @@ export function CouponManager({ initialCoupons }: CouponManagerProps) {
   const [form, setForm]         = useState(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   function setField<K extends keyof typeof EMPTY_FORM>(key: K, val: (typeof EMPTY_FORM)[K]) {
     setForm(prev => ({ ...prev, [key]: val }))
@@ -163,7 +164,7 @@ export function CouponManager({ initialCoupons }: CouponManagerProps) {
   }
 
   function deleteCoupon(coupon: Coupon) {
-    if (!window.confirm(`Delete coupon "${coupon.code}"? This cannot be undone.`)) return
+    setConfirmDeleteId(null)
     startTransition(async () => {
       const res = await fetch(`/api/admin/coupons/${coupon.id}`, { method: 'DELETE' })
       if (res.ok) {
@@ -411,9 +412,30 @@ export function CouponManager({ initialCoupons }: CouponManagerProps) {
                         </button>
                       </td>
                       <td style={{ padding: '13px 16px', textAlign: 'right' }}>
-                        <button onClick={() => deleteCoupon(c)} disabled={isPending} style={dangerBtn}>
-                          Delete
-                        </button>
+                        {confirmDeleteId === c.id ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontFamily: 'var(--font-body)', fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                              Delete?
+                            </span>
+                            <button
+                              onClick={() => deleteCoupon(c)}
+                              disabled={isPending}
+                              style={{ fontFamily: 'var(--font-body)', fontSize: '11px', fontWeight: '600', color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                            >
+                              Yes
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              style={{ fontFamily: 'var(--font-body)', fontSize: '11px', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                            >
+                              No
+                            </button>
+                          </span>
+                        ) : (
+                          <button onClick={() => setConfirmDeleteId(c.id)} disabled={isPending} style={dangerBtn}>
+                            Delete
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )

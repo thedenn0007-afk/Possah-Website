@@ -66,6 +66,12 @@ export function ReviewManager({ initialReviews, initialStatus }: ReviewManagerPr
   const [tab, setTab]           = useState(initialStatus)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState<string | null>(null)
+
+  async function extractError(res: Response, fallback: string): Promise<string> {
+    const json = await res.json().catch(() => ({}))
+    return (json as { error?: string }).error ?? fallback
+  }
 
   async function fetchReviews(status: string) {
     setLoading(true)
@@ -102,6 +108,7 @@ export function ReviewManager({ initialReviews, initialStatus }: ReviewManagerPr
 
   async function bulkApprove() {
     if (selected.size === 0) return
+    setError(null)
     startTransition(async () => {
       const res = await fetch('/api/admin/reviews', {
         method:  'PATCH',
@@ -112,11 +119,14 @@ export function ReviewManager({ initialReviews, initialStatus }: ReviewManagerPr
         setReviews(prev => prev.map(r => selected.has(r.id) ? { ...r, is_approved: true } : r))
         setSelected(new Set())
         router.refresh()
+      } else {
+        setError(await extractError(res, 'Failed to approve selected reviews.'))
       }
     })
   }
 
   function approve(review: Review) {
+    setError(null)
     startTransition(async () => {
       const res = await fetch(`/api/admin/reviews/${review.id}`, {
         method:  'PATCH',
@@ -126,11 +136,14 @@ export function ReviewManager({ initialReviews, initialStatus }: ReviewManagerPr
       if (res.ok) {
         setReviews(prev => prev.map(r => r.id === review.id ? { ...r, is_approved: true } : r))
         router.refresh()
+      } else {
+        setError(await extractError(res, 'Failed to approve review.'))
       }
     })
   }
 
   function reject(review: Review) {
+    setError(null)
     startTransition(async () => {
       const res = await fetch(`/api/admin/reviews/${review.id}`, {
         method:  'PATCH',
@@ -140,18 +153,23 @@ export function ReviewManager({ initialReviews, initialStatus }: ReviewManagerPr
       if (res.ok) {
         setReviews(prev => prev.map(r => r.id === review.id ? { ...r, is_approved: false } : r))
         router.refresh()
+      } else {
+        setError(await extractError(res, 'Failed to unapprove review.'))
       }
     })
   }
 
   function deleteReview(review: Review) {
     if (!window.confirm('Delete this review permanently?')) return
+    setError(null)
     startTransition(async () => {
       const res = await fetch(`/api/admin/reviews/${review.id}`, { method: 'DELETE' })
       if (res.ok) {
         setReviews(prev => prev.filter(r => r.id !== review.id))
         setSelected(prev => { const n = new Set(prev); n.delete(review.id); return n })
         router.refresh()
+      } else {
+        setError(await extractError(res, 'Failed to delete review.'))
       }
     })
   }
@@ -160,6 +178,25 @@ export function ReviewManager({ initialReviews, initialStatus }: ReviewManagerPr
 
   return (
     <div>
+      {/* Error banner */}
+      {error && (
+        <div
+          role="alert"
+          className="mb-4 p-3 rounded flex items-center gap-2"
+          style={{ backgroundColor: '#FEE2E2', border: '1px solid #FECACA' }}
+        >
+          <p style={{ fontFamily: 'var(--font-body)', fontSize: '13px', color: 'var(--color-error)' }}>
+            {error}
+          </p>
+          <button
+            onClick={() => setError(null)}
+            style={{ marginLeft: 'auto', color: 'var(--color-error)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '2px', marginBottom: '16px', borderBottom: '1px solid var(--color-border)' }}>
         {TAB_OPTIONS.map(t => (

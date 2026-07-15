@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { JournalRowActions } from './JournalRowActions'
 
 export const metadata: Metadata = { title: 'Journal' }
 export const dynamic = 'force-dynamic'
@@ -181,7 +182,7 @@ export default async function AdminJournalPage() {
                         </span>
                       </td>
                       <td style={{ padding: '13px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', alignItems: 'center' }}>
                           <Link
                             href={`/admin/journal/${article.id}/edit`}
                             style={{ fontFamily: 'var(--font-body)', fontSize: '12px', fontWeight: '500', color: 'var(--color-gold)', textDecoration: 'none' }}
@@ -196,6 +197,7 @@ export default async function AdminJournalPage() {
                           >
                             View ↗
                           </a>
+                          <JournalRowActions articleId={article.id} />
                         </div>
                       </td>
                     </tr>

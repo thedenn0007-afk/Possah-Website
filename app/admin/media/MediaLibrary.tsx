@@ -193,6 +193,7 @@ export function MediaLibrary({ initialFiles, initialFolders }: MediaLibraryProps
   async function deleteFile(file: MediaFile) {
     if (!window.confirm(`Delete "${file.name}"? This cannot be undone.`)) return
     setDeleting(file.fullPath)
+    setUploadError(null)
 
     try {
       const res = await fetch('/api/admin/media/delete', {
@@ -202,12 +203,12 @@ export function MediaLibrary({ initialFiles, initialFolders }: MediaLibraryProps
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        alert(`Delete failed: ${body.error ?? res.status}`)
+        setUploadError(`Delete failed: ${body.error ?? res.status}`)
       } else {
         setFiles(prev => prev.filter(f => f.fullPath !== file.fullPath))
       }
     } catch {
-      alert('Delete failed: network error')
+      setUploadError('Delete failed: network error')
     }
     setDeleting(null)
   }
