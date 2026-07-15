@@ -206,8 +206,11 @@ export default async function AdminOrderDetailPage({ params }: PageProps) {
       {/* Responsive two-column layout — single col on mobile, sidebar on lg+ */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
 
-        {/* RIGHT COLUMN — comes first in DOM so mobile reads: customer → address → controls */}
-        <div className="lg:col-start-2 flex flex-col gap-4">
+        {/* RIGHT COLUMN — stays first in DOM (customer → address → controls read naturally
+            for screen readers/tab order), but visually pushed below Line Items on narrow
+            screens via `order-2` so the order contents are the first thing you see, not
+            the last, when the two-column `lg:` layout collapses to one column. */}
+        <div className="order-2 lg:order-none lg:col-start-2 flex flex-col gap-4">
 
           {/* Customer */}
           <div style={sectionStyle}>
@@ -271,8 +274,9 @@ export default async function AdminOrderDetailPage({ params }: PageProps) {
 
         </div>
 
-        {/* LEFT COLUMN — placed in col 1 on desktop via explicit col-start */}
-        <div className="lg:col-start-1 flex flex-col gap-4">
+        {/* LEFT COLUMN — placed in col 1 on desktop via explicit col-start; on narrow
+            screens `order-1` brings Line Items above the customer/controls stack below. */}
+        <div className="order-1 lg:order-none lg:col-start-1 flex flex-col gap-4">
 
           {/* Line Items */}
           <div style={sectionStyle}>
