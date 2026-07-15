@@ -13,6 +13,10 @@ const accentStyles: Record<NonNullable<AdminStatCardProps['accent']>, string> = 
   error:    'var(--color-error)',
 }
 
+// Warning cards get a light background wash on top of the border-color accent —
+// a 3px top border alone reads as too subtle for "this needs action now."
+const WARNING_BG = '#FFFBEB'
+
 export function AdminStatCard({
   label,
   value,
@@ -26,7 +30,7 @@ export function AdminStatCard({
     <div
       className="flex flex-col gap-3 p-5 rounded"
       style={{
-        backgroundColor: 'var(--color-white)',
+        backgroundColor: accent === 'warning' ? WARNING_BG : 'var(--color-white)',
         border: '1px solid var(--color-border)',
         borderTop: `3px solid ${borderColor}`,
         boxShadow: '0 1px 4px rgba(0,0,0,0.04)',

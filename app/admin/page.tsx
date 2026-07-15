@@ -106,12 +106,12 @@ async function getDashboardData(): Promise<{
         .lte('stock_qty', 3)
         .eq('is_active', true),
 
-      // Last 10 orders (all statuses — admin sees everything in the recent list)
+      // Last 15 orders (all statuses — admin sees everything in the recent list)
       supabase
         .from('orders')
         .select('id, order_number, customer_name, customer_email, total, payment_status, fulfillment_status, created_at, line_items')
         .order('created_at', { ascending: false })
-        .limit(10),
+        .limit(15),
 
       // Abandoned checkouts in the last 7 days — pending/failed payment, not
       // explicitly cancelled. Surfaces the "people tried to pay but didn't"
@@ -243,7 +243,7 @@ export default async function AdminDashboardPage() {
           label="Pending Orders"
           value={stats.pendingOrders}
           subLabel="Unfulfilled + Processing"
-          accent={stats.pendingOrders > 10 ? 'warning' : 'default'}
+          accent={stats.pendingOrders > 5 ? 'warning' : 'default'}
           icon={<IconClock />}
         />
         <AdminStatCard

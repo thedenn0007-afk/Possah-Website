@@ -2,6 +2,7 @@
 
 import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { slugify } from '@/lib/utils'
 
 interface Category {
@@ -174,9 +175,9 @@ export function CategoryManager({ initialCategories }: CategoryManagerProps) {
           <table className="w-full min-w-[600px]" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: 'var(--color-white)', borderBottom: '1px solid var(--color-border)' }}>
-                {['', 'Name', 'Slug', 'Parent', 'Nav Section', 'Gender', 'Products', 'Actions'].map((h) => (
+                {['', '', 'Name', 'Slug', 'Parent', 'Nav Section', 'Gender', 'Products', 'Actions'].map((h, i) => (
                   <th
-                    key={h}
+                    key={i}
                     className="text-left px-4 py-3"
                     style={{
                       fontFamily: 'var(--font-mono)',
@@ -212,6 +213,33 @@ export function CategoryManager({ initialCategories }: CategoryManagerProps) {
                       <path d="M2 4h10M2 7h10M2 10h10" />
                     </svg>
                   </td>
+
+                  {/* Hero image thumbnail */}
+                  <td className="px-4 py-3 w-14">
+                    <div
+                      className="relative overflow-hidden rounded-sm flex-shrink-0"
+                      style={{ width: 40, height: 40, backgroundColor: 'var(--color-border)' }}
+                    >
+                      {cat.hero_image_url ? (
+                        <Image
+                          src={cat.hero_image_url}
+                          alt={cat.name}
+                          fill
+                          className="object-cover"
+                          sizes="40px"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--color-text-muted)" strokeWidth="1.2" aria-hidden="true">
+                            <rect x="1" y="2" width="14" height="12" rx="1" />
+                            <circle cx="5.5" cy="6" r="1.2" />
+                            <path d="M1 10l4-3 3 2.5 2-1.5 5 4" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+
                   <td className="px-4 py-3">
                     <span style={{ fontFamily: 'var(--font-body)', fontSize: '13px', fontWeight: '500', color: 'var(--color-text)' }}>
                       {cat.name}
